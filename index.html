@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP Trend Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<style>
+:root{
+  --bg:#0E1620; --bg2:#131E2B; --panel:#18242F; --panel2:#1D2C3A;
+  --line:#26384A; --line2:#324A61; --ink:#E6EDF3; --muted:#8A9BA8; --faint:#5C6F7E;
+  --amber:#F2A93B; --teal:#3FB6A8; --crit:#E5544B;
+  --shadow:0 8px 30px rgba(0,0,0,.35);
+  --mono:'JetBrains Mono',monospace; --disp:'Space Grotesk',sans-serif; --body:'Inter',sans-serif;
+}
+*{box-sizing:border-box} html,body{margin:0;background:
+  radial-gradient(1200px 600px at 80% -10%, #17293a 0%, transparent 60%),
+  radial-gradient(900px 500px at -10% 20%, #14202e 0%, transparent 55%), var(--bg);
+  color:var(--ink); font-family:var(--body); line-height:1.5; -webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px; margin:0 auto; padding:26px 20px 80px}
+header{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:24px}
+.brand{display:flex; align-items:center; gap:14px}
+.mark{width:46px;height:46px;flex:none;border:1px solid var(--line2);border-radius:10px;display:grid;place-items:center;background:linear-gradient(160deg,#1c2c3b,#141f2b)}
+h1{font-family:var(--disp); font-weight:700; font-size:22px; letter-spacing:-.01em; margin:0}
+.sub{color:var(--muted); font-size:12.5px; margin-top:2px; font-family:var(--mono); letter-spacing:.02em}
+.head-right{display:flex; flex-direction:column; align-items:flex-end; gap:10px}
+.lang{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.lang button{background:transparent; color:var(--muted); border:none; padding:6px 13px; font-family:var(--mono); font-size:12px; cursor:pointer}
+.lang button.on{background:var(--amber); color:#10202b; font-weight:700}
+.status{font-family:var(--mono); font-size:11.5px; text-align:right; color:var(--muted)}
+.status b{color:var(--teal)} .status .bad{color:var(--crit)}
+.panel{background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:var(--shadow)}
+.eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin:0 0 10px}
+.drop{border:1.5px dashed var(--line2); border-radius:12px; padding:38px 20px; text-align:center; cursor:pointer; transition:.18s; background:rgba(255,255,255,.012)}
+.drop:hover,.drop.hot{border-color:var(--amber); background:rgba(242,169,59,.06)}
+.drop h3{font-family:var(--disp); margin:8px 0 4px; font-size:17px}
+.drop p{color:var(--muted); font-size:13px; margin:0}
+.drop .ic{font-size:30px; color:var(--amber)}
+.hint{color:var(--faint); font-size:11.5px; font-family:var(--mono); margin-top:14px}
+.err{color:var(--crit); font-family:var(--mono); font-size:12.5px; margin-top:12px}
+.result{margin-top:20px; display:none}
+.ctrls{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px}
+.chart-hint{font-size:11px;color:var(--faint);font-family:var(--mono)}
+.btns{display:flex; gap:8px}
+.btn{font-family:var(--disp); font-weight:600; font-size:12.5px; padding:7px 14px; border-radius:8px; cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--muted)}
+.btn:hover{color:var(--ink); border-color:var(--line2)}
+.btn.amber{background:var(--amber); color:#10202b; border-color:var(--amber)}
+.sec{margin-top:22px} .sec h4{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin:0 0 10px}
+table{width:100%; border-collapse:collapse; font-size:12.5px}
+th,td{text-align:right; padding:7px 10px; border-bottom:1px solid rgba(38,56,74,.6)}
+th{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--faint); text-transform:uppercase; font-weight:500}
+td:first-child,th:first-child{text-align:left}
+td.pname{font-family:var(--mono); font-weight:600}
+td.num{font-family:var(--mono); color:var(--muted)}
+td.delta.up{color:var(--amber)} td.delta.down{color:#4FB0C6}
+.dotc{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:middle}
+.foot{color:var(--faint); font-size:11px; font-family:var(--mono); text-align:center; margin-top:34px}
+.hidden{display:none}
+canvas{margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+          <path d="M3 20h18" stroke="#3FB6A8" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M3 20V4" stroke="#3FB6A8" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M5 15l4-5 3 3 5-7" stroke="#F2A93B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="20" cy="6" r="1.5" fill="#F2A93B"/>
+        </svg>
+      </div>
+      <div>
+        <h1 id="t-title">ESP Trend Viewer</h1>
+        <div class="sub" id="t-sub">interactive parameter charts · SCADA &amp; Starview CSV</div>
+      </div>
+    </div>
+    <div class="head-right">
+      <div class="lang" id="langToggle">
+        <button data-lang="en" class="on">EN</button>
+        <button data-lang="id">ID</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+  </header>
+
+  <section class="panel">
+    <p class="eyebrow" id="t-eyebrow">Data source · sensor time-series</p>
+    <div class="drop" id="drop">
+      <div class="ic">↧</div>
+      <h3 id="t-droptitle">Drop your CSV here</h3>
+      <p id="t-dropsub">or click to choose · SCADA-flat &amp; Starview formats auto-detected</p>
+      <input type="file" id="file" accept=".csv" class="hidden">
+      <div class="hint" id="t-drophint">any column names (PIP, Intake Pressure, Amps, …) recognized automatically</div>
+    </div>
+    <div class="err hidden" id="err"></div>
+  </section>
+
+  <section class="result panel" id="result">
+    <p class="eyebrow" id="resultSrc"></p>
+    <div class="ctrls">
+      <span class="chart-hint" id="t-charthint">Scroll/drag to zoom · click a legend item to hide · hover for values</span>
+      <div class="btns">
+        <button class="btn" id="resetZoom">Reset zoom</button>
+        <button class="btn amber" id="exportPng">Export PNG</button>
+      </div>
+    </div>
+    <canvas id="chart" height="150"></canvas>
+
+    <div class="sec">
+      <h4 id="t-statshead">Parameter statistics</h4>
+      <table id="statsTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <div class="foot" id="foot">ESP Trend Viewer · standalone</div>
+</div>
+
+<script>
+"use strict";
+let chart=null, LANG='en', LASTSERIES=null;
+
+/* ---------- embedded config (mandiri) ---------- */
+const ALIASES={
+  q:"Q",rate:"Q",bfpd:"Q",bpd:"Q",flow:"Q",liquidrate:"Q",
+  pip:"Pi",pi:"Pi",intake:"Pi",pintake:"Pi",intakepressure:"Pi",pumpintakepressure:"Pi",dhintakepressure:"Pi",
+  pdp:"Pd",pd:"Pd",discharge:"Pd",pdischarge:"Pd",dischargepressure:"Pd",dhdischargepressure:"Pd",
+  dp:"dP",deltap:"dP",dppump:"dP",pumpdifferential:"dP",
+  ti:"Ti",fluidtemp:"Ti",intaketemp:"Ti",intaketemperature:"Ti",dhintaketemp:"Ti",dhintaketemperature:"Ti",
+  tm:"Tm",tmotor:"Tm",motortemp:"Tm",motortemperature:"Tm",motorwinding:"Tm",mwt:"Tm",dhmotortemp:"Tm",dhmotortemperature:"Tm",
+  vib:"Vib",vibration:"Vib",dhvibration:"Vib",
+  amps:"Amps",current:"Amps",ra:"Amps",averageamps:"Amps",motorcurrent:"Amps",dhcurrent:"Amps",dhmotorcurrent:"Amps",
+  thp:"THP",whp:"THP",wellhead:"THP",wellheadpressure:"THP",tubinghead:"THP",tubingheadpressure:"THP",
+  chp:"CHP",casing:"CHP",casingpressure:"CHP",casingheadpressure:"CHP",annulus:"CHP",
+  hz:"Freq",freq:"Freq",frequency:"Freq",drivefrequency:"Freq",dhfrequency:"Freq",dhfreq:"Freq",outputfrequency:"Freq"
+};
+const BLOCKLIST=["leakage","insulation"];
+const PLABELS={Q:"Flow Rate",THP:"Wellhead Pressure",Amps:"Motor Current",Pd:"Discharge Pressure",
+  Pi:"Intake Pressure",dP:"Pump Differential",Ti:"Intake Temp",Tm:"Motor Temp",Vib:"Vibration",Freq:"Drive Frequency",CHP:"Casing Pressure"};
+const ORDER=["Freq","Amps","Pi","Pd","dP","THP","CHP","Ti","Tm","Vib","Q"];
+const COLORS={Pi:"#4FB0C6",Pd:"#E5544B",dP:"#F2A93B",Amps:"#3FB6A8",Tm:"#B98CE6",Q:"#89C24F",
+  Ti:"#E58F7B",THP:"#6FA8DC",CHP:"#C6A0F6",Vib:"#E6C34F",Freq:"#7FD1B9"};
+
+/* ---------- i18n ---------- */
+const T={
+  en:{title:"ESP Trend Viewer", sub:"interactive parameter charts · SCADA & Starview CSV",
+    eyebrow:"Data source · sensor time-series", droptitle:"Drop your CSV here",
+    dropsub:"or click to choose · SCADA-flat & Starview formats auto-detected",
+    drophint:"any column names (PIP, Intake Pressure, Amps, …) recognized automatically",
+    charthint:"Scroll/drag to zoom · click a legend item to hide · hover for values",
+    resetZoom:"Reset zoom", exportPng:"Export PNG", statshead:"Parameter statistics",
+    cParam:"Parameter", cN:"n", cMin:"min", cMax:"max", cAvg:"avg", cLast:"last", cDelta:"Δ%",
+    activePoints:"points", range:"range", hours:"h", days:"d",
+    errEmpty:"CSV is empty.", errNoCols:"No recognizable parameter columns. Check the headers.",
+    errRead:"Failed to read file.", errStarview:"Starview format detected but could not be parsed.",
+    starview:"Starview format · auto-converted", tooFew:"Too little active data (Freq>0).",
+    foot:"ESP Trend Viewer · standalone · SCADA + Starview" },
+  id:{title:"ESP Trend Viewer", sub:"grafik parameter interaktif · CSV SCADA & Starview",
+    eyebrow:"Sumber data · time-series sensor", droptitle:"Lepas file CSV di sini",
+    dropsub:"atau klik untuk memilih · format SCADA-flat & Starview dideteksi otomatis",
+    drophint:"nama kolom bebas (PIP, Intake Pressure, Amps, …) dikenali otomatis",
+    charthint:"Scroll/drag untuk zoom · klik item legenda untuk sembunyikan · arahkan kursor untuk nilai",
+    resetZoom:"Reset zoom", exportPng:"Ekspor PNG", statshead:"Statistik parameter",
+    cParam:"Parameter", cN:"n", cMin:"min", cMax:"maks", cAvg:"rata", cLast:"akhir", cDelta:"Δ%",
+    activePoints:"titik", range:"rentang", hours:"jam", days:"hari",
+    errEmpty:"CSV kosong.", errNoCols:"Tidak ada kolom parameter yang dikenali. Cek header.",
+    errRead:"Gagal membaca file.", errStarview:"Format Starview terdeteksi tapi gagal diurai.",
+    starview:"Format Starview · dikonversi otomatis", tooFew:"Data aktif (Freq>0) terlalu sedikit.",
+    foot:"ESP Trend Viewer · mandiri · SCADA + Starview" }
+};
+const t=k=>T[LANG][k]??k;
+
+/* ---------- helpers ---------- */
+const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
+function canon(h){
+  const n=norm(h.replace(/\(.*?\)/g,' '));
+  if(BLOCKLIST.some(b=>n.includes(b))) return null;
+  if(ALIASES[n]) return ALIASES[n];
+  let best=null,bl=0;
+  for(const k in ALIASES){ if(k.length>=4 && n.includes(k) && k.length>bl){best=ALIASES[k];bl=k.length;} }
+  return best;
+}
+const fmt=v=>(v!=null&&v===v)?(+v).toLocaleString(undefined,{maximumFractionDigits:2}):'—';
+
+/* ---------- format detection ---------- */
+function isStarview(text){
+  const head=text.slice(0,800).toLowerCase();
+  if(head.includes('starview')) return true;
+  return /trend\s*1[\s\S]{0,200}trend\s*2/i.test(text.slice(0,1500));
+}
+function parseStarview(text){
+  const g=Papa.parse(text.trim(),{header:false,skipEmptyLines:true}); const rows=g.data;
+  let tn=-1;
+  for(let i=0;i<Math.min(rows.length,10);i++){ if(rows[i].some(c=>/^\s*trend\s*1\s*$/i.test((c||'').trim()))){ tn=i; break; } }
+  if(tn<0) throw new Error(t('errStarview'));
+  const nameRow=rows[tn], nblocks=Math.floor(nameRow.length/3), names=[];
+  for(let b=0;b<nblocks;b++) names.push((nameRow[b*3+2]||'').replace(/"/g,'').trim());
+  const keep=[], fields=['Reading Time'];
+  names.forEach((nm,b)=>{ const c=canon(nm); if(c && !keep.some(k=>k.c===c)){ keep.push({b,c}); fields.push(c); } });
+  if(keep.length<1) throw new Error(t('errNoCols'));
+  const out=[];
+  for(let i=tn+2;i<rows.length;i++){ const r=rows[i]; if(!r||!(r[0]||'').trim()) continue;
+    const o={'Reading Time':(r[0]||'').trim()+' '+(r[1]||'').trim()};
+    keep.forEach(({b,c})=>{ o[c]=(r[b*3+2]||'').trim(); }); out.push(o); }
+  return {data:out, fields};
+}
+
+/* ---------- build series from parsed rows ---------- */
+function buildSeries(rows,fields,fmtType){
+  const colMap={}; let timeCol=null;
+  fields.forEach(f=>{ const c=canon(f); if(c) colMap[f]=c; if(/time|date|tanggal|waktu/i.test(f)) timeCol=f; });
+  const canonCols={}; Object.entries(colMap).forEach(([raw,c])=>canonCols[c]=raw);
+  const series={}, times=[];
+  rows.forEach(r=>{ if(timeCol){ const d=new Date(r[timeCol]); times.push(isNaN(d)?null:d); } });
+  for(const c in canonCols) series[c]=rows.map(r=>{ const v=parseFloat(r[canonCols[c]]); return isNaN(v)?NaN:v; });
+  if(series.Pd && series.Pi && !series.dP) series.dP=series.Pd.map((v,i)=>{ const p=series.Pi[i]; return (v===v&&p===p)?v-p:NaN; });
+  if(!Object.keys(series).length) throw new Error(t('errNoCols'));
+
+  let mask=rows.map(()=>true);
+  if(series.Freq) mask=series.Freq.map(v=>v===v && v>0);
+  let idx=mask.map((m,i)=>m?i:-1).filter(i=>i>=0);
+  if(idx.length<3) idx=rows.map((_,i)=>i);   // fallback: pakai semua bila filter terlalu ketat
+  const pick=a=>idx.map(i=>a[i]);
+
+  // stats
+  const stats=[];
+  const present=Object.keys(series).sort((a,b)=>{const ia=ORDER.indexOf(a),ib=ORDER.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib);});
+  for(const c of present){
+    const v=pick(series[c]).filter(x=>x===x); if(v.length<1) continue;
+    const head=Math.max(1,Math.floor(v.length*0.15));
+    const base=avg(v.slice(0,head)), last=avg(v.slice(-head));
+    const d=Math.abs(base)<1e-6?(last-base)*100:(last-base)/Math.abs(base)*100;
+    stats.push({p:c, n:v.length, min:Math.min(...v), max:Math.max(...v), avg:avg(v), last:v[v.length-1], delta:d});
+  }
+
+  // chart data (downsample, keep raw)
+  const step=Math.max(1,Math.floor(idx.length/400));
+  const data={};
+  for(const c of present){ const run=pick(series[c]); if(run.filter(x=>x===x).length<1) continue;
+    data[c]=run.filter((_,i)=>i%step===0); }
+  const runTimes=idx.map(i=>times[i]).filter(Boolean);
+  let labels;
+  if(runTimes.length){ labels=idx.filter((_,i)=>i%step===0).map(i=>{ const d=times[i];
+    return d?`${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`:''; }); }
+  else { const k=Object.keys(data)[0]; labels=k?data[k].map((_,i)=>String(i+1)):[]; }
+
+  let spanH=null;
+  if(runTimes.length>1) spanH=(runTimes[runTimes.length-1]-runTimes[0])/3.6e6;
+  return {stats, chart:{labels,data}, meta:{points:idx.length, spanH, fmtType}};
+}
+
+/* ---------- render ---------- */
+function render(res){
+  LASTSERIES=res;
+  document.getElementById('result').style.display='block';
+  const spanStr=res.meta.spanH!=null?` · ${t('range')} ${res.meta.spanH<48?res.meta.spanH.toFixed(1)+' '+t('hours'):(res.meta.spanH/24).toFixed(1)+' '+t('days')}`:'';
+  const fmtStr=res.meta.fmtType==='starview'?` · ${t('starview')}`:'';
+  document.getElementById('resultSrc').textContent=`${res.meta.points} ${t('activePoints')}${spanStr}${fmtStr}`;
+  drawChart(res.chart);
+  drawStats(res.stats);
+}
+function drawStats(stats){
+  const thead=document.querySelector('#statsTable thead'), tbody=document.querySelector('#statsTable tbody');
+  thead.innerHTML=`<tr><th>${t('cParam')}</th><th>${t('cN')}</th><th>${t('cMin')}</th><th>${t('cMax')}</th><th>${t('cAvg')}</th><th>${t('cLast')}</th><th>${t('cDelta')}</th></tr>`;
+  tbody.innerHTML='';
+  stats.forEach(s=>{
+    const col=COLORS[s.p]||'#8A9BA8';
+    const dcls=s.delta>0.5?'up':s.delta<-0.5?'down':'';
+    tbody.insertAdjacentHTML('beforeend',
+      `<tr><td class="pname"><span class="dotc" style="background:${col}"></span>${s.p} <span style="color:var(--faint);font-weight:400">${PLABELS[s.p]||''}</span></td>`+
+      `<td class="num">${s.n}</td><td class="num">${fmt(s.min)}</td><td class="num">${fmt(s.max)}</td>`+
+      `<td class="num">${fmt(s.avg)}</td><td class="num">${fmt(s.last)}</td>`+
+      `<td class="num delta ${dcls}">${s.delta>0?'+':''}${s.delta.toFixed(1)}%</td></tr>`);
+  });
+}
+function drawChart(series){
+  const ctx=document.getElementById('chart'); if(chart) chart.destroy();
+  const palette=Object.values(COLORS); let ci=0;
+  const ds=Object.entries(series.data).map(([k,v])=>{
+    const f=v.filter(x=>x===x), mn=Math.min(...f), mx=Math.max(...f), rng=(mx-mn)||1;
+    const color=COLORS[k]||palette[ci++%palette.length];
+    return {label:k, data:v.map(x=>x===x?(x-mn)/rng*100:null), _raw:v, borderColor:color, backgroundColor:color,
+      borderWidth:1.5, pointRadius:0, pointHoverRadius:3, tension:.2, spanGaps:true};
+  });
+  chart=new Chart(ctx,{type:'line', data:{labels:series.labels, datasets:ds},
+    options:{responsive:true, animation:false, interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#8A9BA8',font:{family:'JetBrains Mono',size:11},usePointStyle:true,boxWidth:8}},
+        tooltip:{enabled:true, backgroundColor:'#1D2C3A', borderColor:'#324A61', borderWidth:1,
+          titleColor:'#E6EDF3', bodyColor:'#E6EDF3', titleFont:{family:'JetBrains Mono',size:11}, bodyFont:{family:'JetBrains Mono',size:11},
+          callbacks:{ label:c=>{ const r=c.dataset._raw?c.dataset._raw[c.dataIndex]:null; return `${c.dataset.label}: ${fmt(r)}`; } }},
+        zoom:{ pan:{enabled:true,mode:'x'},
+          zoom:{ wheel:{enabled:true}, pinch:{enabled:true},
+            drag:{enabled:true,backgroundColor:'rgba(242,169,59,0.12)',borderColor:'#F2A93B',borderWidth:1}, mode:'x' } }
+      },
+      scales:{x:{ticks:{color:'#5C6F7E',maxTicksLimit:9,font:{size:10}},grid:{color:'rgba(38,56,74,.4)'}},
+        y:{ticks:{color:'#5C6F7E',callback:v=>v+'%',font:{size:10}},grid:{color:'rgba(38,56,74,.4)'},
+          title:{display:true,text:'min–max %',color:'#5C6F7E',font:{size:9}}}}}});
+}
+
+/* ---------- apply language ---------- */
+function applyLang(){
+  document.documentElement.lang=LANG;
+  const set=(id,k)=>{const el=document.getElementById(id); if(el) el.textContent=t(k);};
+  set('t-title','title'); set('t-sub','sub'); set('t-eyebrow','eyebrow');
+  set('t-droptitle','droptitle'); set('t-dropsub','dropsub'); set('t-drophint','drophint');
+  set('t-charthint','charthint'); set('resetZoom','resetZoom'); set('exportPng','exportPng'); set('t-statshead','statshead');
+  set('foot','foot');
+  document.querySelectorAll('#langToggle button').forEach(b=>b.classList.toggle('on',b.dataset.lang===LANG));
+  if(LASTSERIES) render(LASTSERIES);
+}
+
+/* ---------- file handling ---------- */
+function showErr(m){ const e=document.getElementById('err'); e.textContent='⚠ '+m; e.classList.remove('hidden'); }
+function handleFile(f){
+  document.getElementById('err').classList.add('hidden');
+  document.getElementById('status').innerHTML=`<b>${f.name}</b>`;
+  const reader=new FileReader();
+  reader.onerror=()=>showErr(t('errRead'));
+  reader.onload=()=>{
+    try{
+      const text=reader.result; let parsed, fmtType;
+      if(isStarview(text)){ fmtType='starview'; parsed=parseStarview(text); }
+      else{ fmtType='flat'; const r=Papa.parse(text.trim(),{header:true,skipEmptyLines:true,dynamicTyping:false}); parsed={data:r.data,fields:r.meta.fields}; }
+      if(!parsed.data.length) throw new Error(t('errEmpty'));
+      const res=buildSeries(parsed.data,parsed.fields,fmtType);
+      if(!res.stats.length) throw new Error(t('errNoCols'));
+      render(res);
+    }catch(e){ showErr(e.message); }
+  };
+  reader.readAsText(f);
+}
+
+/* ---------- wiring ---------- */
+try{ const zp=window.ChartZoom||window.chartjsPluginZoom||window['chartjs-plugin-zoom'];
+  if(zp && window.Chart && Chart.register) Chart.register(zp.default||zp); }catch(e){}
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+drop.addEventListener('click',()=>fileInput.click());
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
+drop.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+fileInput.addEventListener('change',e=>{ const f=e.target.files[0]; if(f) handleFile(f); });
+document.getElementById('resetZoom').addEventListener('click',()=>{ if(chart&&chart.resetZoom) chart.resetZoom(); });
+document.getElementById('exportPng').addEventListener('click',()=>{
+  if(!chart)return; const a=document.createElement('a');
+  a.href=chart.toBase64Image('image/png',1); a.download='esp-trend.png'; a.click();
+});
+document.getElementById('langToggle').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return; LANG=e.target.dataset.lang;
+  try{localStorage.setItem('espv_lang',LANG);}catch(_){}
+  applyLang();
+});
+try{ const s=localStorage.getItem('espv_lang'); if(s==='en'||s==='id')LANG=s;
+  else if((navigator.language||'').toLowerCase().startsWith('id'))LANG='id'; }catch(_){}
+applyLang();
+</script>
+</body>
+</html>
