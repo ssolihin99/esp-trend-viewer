@@ -38,12 +38,17 @@ h1{font-family:var(--disp); font-weight:700; font-size:22px; letter-spacing:-.01
 .status b{color:var(--teal)} .status .bad{color:var(--crit)}
 .panel{background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:var(--shadow)}
 .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin:0 0 10px}
-.drop{border:1.5px dashed var(--line2); border-radius:12px; padding:38px 20px; text-align:center; cursor:pointer; transition:.18s; background:rgba(255,255,255,.012)}
+.drop{border:1.5px dashed var(--line2); border-radius:12px; padding:20px 18px; text-align:center; cursor:pointer; transition:.18s; background:rgba(255,255,255,.012)}
 .drop:hover,.drop.hot{border-color:var(--amber); background:rgba(242,169,59,.06)}
-.drop h3{font-family:var(--disp); margin:8px 0 4px; font-size:17px}
-.drop p{color:var(--muted); font-size:13px; margin:0}
-.drop .ic{font-size:30px; color:var(--amber)}
-.hint{color:var(--faint); font-size:11.5px; font-family:var(--mono); margin-top:14px}
+.drop h3{font-family:var(--disp); margin:6px 0 3px; font-size:15px}
+.drop p{color:var(--muted); font-size:12px; margin:0}
+.drop .ic{font-size:22px; color:var(--amber)}
+.hint{color:var(--faint); font-size:11px; font-family:var(--mono); margin-top:9px}
+/* compact state setelah file dimuat */
+.drop.compact{display:flex; align-items:center; justify-content:center; gap:10px; padding:11px 16px}
+.drop.compact .ic{font-size:16px; margin:0}
+.drop.compact h3{margin:0; font-size:13px}
+.drop.compact p, .drop.compact .hint{display:none}
 .err{color:var(--crit); font-family:var(--mono); font-size:12.5px; margin-top:12px}
 .result{margin-top:20px; display:none}
 .ctrls{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px}
@@ -53,6 +58,12 @@ h1{font-family:var(--disp); font-weight:700; font-size:22px; letter-spacing:-.01
 .btn:hover{color:var(--ink); border-color:var(--line2)}
 .btn.amber{background:var(--amber); color:#10202b; border-color:var(--amber)}
 .sec{margin-top:22px} .sec h4{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin:0 0 10px}
+.sechead{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px}
+.sechead h4{margin:0}
+.toggle{font-family:var(--mono); font-size:11px; color:var(--muted); background:transparent; border:1px solid var(--line); border-radius:7px; padding:4px 11px; cursor:pointer; display:inline-flex; align-items:center; gap:6px}
+.toggle:hover{color:var(--ink); border-color:var(--line2)}
+.toggle .cv{transition:transform .18s} .toggle.closed .cv{transform:rotate(-90deg)}
+#statsBody.hidden{display:none}
 table{width:100%; border-collapse:collapse; font-size:12.5px}
 th,td{text-align:right; padding:7px 10px; border-bottom:1px solid rgba(38,56,74,.6)}
 th{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--faint); text-transform:uppercase; font-weight:500}
@@ -116,8 +127,13 @@ canvas{margin-top:4px}
     <canvas id="chart" height="150"></canvas>
 
     <div class="sec">
-      <h4 id="t-statshead">Parameter statistics</h4>
-      <table id="statsTable"><thead></thead><tbody></tbody></table>
+      <div class="sechead">
+        <h4 id="t-statshead">Parameter statistics</h4>
+        <button class="toggle" id="statsToggle"><span id="t-statstoggle">Hide</span> <span class="cv">▾</span></button>
+      </div>
+      <div id="statsBody">
+        <table id="statsTable"><thead></thead><tbody></tbody></table>
+      </div>
     </div>
   </section>
 
@@ -126,7 +142,7 @@ canvas{margin-top:4px}
 
 <script>
 "use strict";
-let chart=null, LANG='en', LASTSERIES=null;
+let chart=null, LANG='en', LASTSERIES=null, statsOpen=true;
 
 /* ---------- embedded config (mandiri) ---------- */
 const ALIASES={
@@ -156,7 +172,7 @@ const T={
     dropsub:"or click to choose · SCADA-flat & Starview formats auto-detected",
     drophint:"any column names (PIP, Intake Pressure, Amps, …) recognized automatically",
     charthint:"Scroll/drag to zoom · click a legend item to hide · hover for values",
-    resetZoom:"Reset zoom", exportPng:"Export PNG", statshead:"Parameter statistics",
+    resetZoom:"Reset zoom", exportPng:"Export PNG", statshead:"Parameter statistics", hide:"Hide", show:"Show",
     cParam:"Parameter", cN:"n", cMin:"min", cMax:"max", cAvg:"avg", cLast:"last", cDelta:"Δ%",
     activePoints:"points", range:"range", hours:"h", days:"d",
     errEmpty:"CSV is empty.", errNoCols:"No recognizable parameter columns. Check the headers.",
@@ -168,7 +184,7 @@ const T={
     dropsub:"atau klik untuk memilih · format SCADA-flat & Starview dideteksi otomatis",
     drophint:"nama kolom bebas (PIP, Intake Pressure, Amps, …) dikenali otomatis",
     charthint:"Scroll/drag untuk zoom · klik item legenda untuk sembunyikan · arahkan kursor untuk nilai",
-    resetZoom:"Reset zoom", exportPng:"Ekspor PNG", statshead:"Statistik parameter",
+    resetZoom:"Reset zoom", exportPng:"Ekspor PNG", statshead:"Statistik parameter", hide:"Sembunyikan", show:"Tampilkan",
     cParam:"Parameter", cN:"n", cMin:"min", cMax:"maks", cAvg:"rata", cLast:"akhir", cDelta:"Δ%",
     activePoints:"titik", range:"rentang", hours:"jam", days:"hari",
     errEmpty:"CSV kosong.", errNoCols:"Tidak ada kolom parameter yang dikenali. Cek header.",
@@ -262,6 +278,7 @@ function buildSeries(rows,fields,fmtType){
 function render(res){
   LASTSERIES=res;
   document.getElementById('result').style.display='block';
+  { const dz=document.getElementById('drop'); dz.classList.add('compact'); document.getElementById('t-droptitle').textContent=LANG==='id'?'Ganti CSV':'Change CSV'; document.getElementById('t-dropsub').classList.add('hidden'); }
   const spanStr=res.meta.spanH!=null?` · ${t('range')} ${res.meta.spanH<48?res.meta.spanH.toFixed(1)+' '+t('hours'):(res.meta.spanH/24).toFixed(1)+' '+t('days')}`:'';
   const fmtStr=res.meta.fmtType==='starview'?` · ${t('starview')}`:'';
   document.getElementById('resultSrc').textContent=`${res.meta.points} ${t('activePoints')}${spanStr}${fmtStr}`;
@@ -314,6 +331,7 @@ function applyLang(){
   set('t-title','title'); set('t-sub','sub'); set('t-eyebrow','eyebrow');
   set('t-droptitle','droptitle'); set('t-dropsub','dropsub'); set('t-drophint','drophint');
   set('t-charthint','charthint'); set('resetZoom','resetZoom'); set('exportPng','exportPng'); set('t-statshead','statshead');
+  { const st=document.getElementById('t-statstoggle'); if(st) st.textContent=t(statsOpen?'hide':'show'); }
   set('foot','foot');
   document.querySelectorAll('#langToggle button').forEach(b=>b.classList.toggle('on',b.dataset.lang===LANG));
   if(LASTSERIES) render(LASTSERIES);
@@ -353,6 +371,12 @@ document.getElementById('resetZoom').addEventListener('click',()=>{ if(chart&&ch
 document.getElementById('exportPng').addEventListener('click',()=>{
   if(!chart)return; const a=document.createElement('a');
   a.href=chart.toBase64Image('image/png',1); a.download='esp-trend.png'; a.click();
+});
+document.getElementById('statsToggle').addEventListener('click',()=>{
+  statsOpen=!statsOpen;
+  document.getElementById('statsBody').classList.toggle('hidden',!statsOpen);
+  document.getElementById('statsToggle').classList.toggle('closed',!statsOpen);
+  document.getElementById('t-statstoggle').textContent=t(statsOpen?'hide':'show');
 });
 document.getElementById('langToggle').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return; LANG=e.target.dataset.lang;
