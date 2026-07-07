@@ -52,6 +52,18 @@ h1{font-family:var(--disp); font-weight:700; font-size:22px; letter-spacing:-.01
 .err{color:var(--crit); font-family:var(--mono); font-size:12.5px; margin-top:12px}
 .result{margin-top:20px; display:none}
 .ctrls{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px}
+.picker{margin-bottom:14px}
+.picker .ph{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px; flex-wrap:wrap}
+.picker .pt{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint)}
+.quicks{display:flex; gap:6px}
+.quick{font-family:var(--mono); font-size:10.5px; color:var(--muted); background:transparent; border:1px solid var(--line); border-radius:6px; padding:3px 9px; cursor:pointer}
+.quick:hover{color:var(--ink); border-color:var(--line2)}
+.chips{display:flex; flex-wrap:wrap; gap:7px}
+.chip{display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border:1px solid var(--line); border-radius:20px; font-family:var(--mono); font-size:12px; color:var(--muted); cursor:pointer; user-select:none; transition:.12s}
+.chip.on{color:var(--ink); border-color:var(--line2); background:var(--panel2)}
+.chip.off{opacity:.4}
+.chip .cdot{width:9px; height:9px; border-radius:50%; flex:none}
+.chip.off .cdot{background:var(--faint)!important}
 .chart-hint{font-size:11px;color:var(--faint);font-family:var(--mono)}
 .btns{display:flex; gap:8px}
 .btn{font-family:var(--disp); font-weight:600; font-size:12.5px; padding:7px 14px; border-radius:8px; cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--muted)}
@@ -117,6 +129,7 @@ canvas{margin-top:4px}
 
   <section class="result panel" id="result">
     <p class="eyebrow" id="resultSrc"></p>
+    <div class="picker" id="pickerWrap"></div>
     <div class="ctrls">
       <span class="chart-hint" id="t-charthint">Scroll/drag to zoom · click a legend item to hide · hover for values</span>
       <div class="btns">
@@ -142,7 +155,7 @@ canvas{margin-top:4px}
 
 <script>
 "use strict";
-let chart=null, LANG='en', LASTSERIES=null, statsOpen=true;
+let chart=null, LANG='en', LASTSERIES=null, statsOpen=true, FULLRES=null, SELECTED=new Set();
 
 /* ---------- embedded config (mandiri) ---------- */
 const ALIASES={
@@ -172,11 +185,11 @@ const T={
     dropsub:"or click to choose · SCADA-flat & Starview formats auto-detected",
     drophint:"any column names (PIP, Intake Pressure, Amps, …) recognized automatically",
     charthint:"Scroll/drag to zoom · click a legend item to hide · hover for values",
-    resetZoom:"Reset zoom", exportPng:"Export PNG", statshead:"Parameter statistics", hide:"Hide", show:"Show",
+    resetZoom:"Reset zoom", exportPng:"Export PNG", statshead:"Parameter statistics", hide:"Hide", show:"Show", pickerHead:"Parameters to display", selAll:"all", selNone:"none",
     cParam:"Parameter", cN:"n", cMin:"min", cMax:"max", cAvg:"avg", cLast:"last", cDelta:"Δ%",
     activePoints:"points", range:"range", hours:"h", days:"d",
     errEmpty:"CSV is empty.", errNoCols:"No recognizable parameter columns. Check the headers.",
-    errRead:"Failed to read file.", errStarview:"Starview format detected but could not be parsed.",
+    errRead:"Failed to read file.", errStarview:"Starview format detected but could not be parsed.", errEventLog:"This looks like a VSD event/alarm log (Date/Event), not numeric parameter trends. The viewer charts numeric data only.",
     starview:"Starview format · auto-converted", tooFew:"Too little active data (Freq>0).",
     foot:"ESP Trend Viewer · standalone · SCADA + Starview" },
   id:{title:"ESP Trend Viewer", sub:"grafik parameter interaktif · CSV SCADA & Starview",
@@ -184,11 +197,11 @@ const T={
     dropsub:"atau klik untuk memilih · format SCADA-flat & Starview dideteksi otomatis",
     drophint:"nama kolom bebas (PIP, Intake Pressure, Amps, …) dikenali otomatis",
     charthint:"Scroll/drag untuk zoom · klik item legenda untuk sembunyikan · arahkan kursor untuk nilai",
-    resetZoom:"Reset zoom", exportPng:"Ekspor PNG", statshead:"Statistik parameter", hide:"Sembunyikan", show:"Tampilkan",
+    resetZoom:"Reset zoom", exportPng:"Ekspor PNG", statshead:"Statistik parameter", hide:"Sembunyikan", show:"Tampilkan", pickerHead:"Parameter ditampilkan", selAll:"semua", selNone:"kosong",
     cParam:"Parameter", cN:"n", cMin:"min", cMax:"maks", cAvg:"rata", cLast:"akhir", cDelta:"Δ%",
     activePoints:"titik", range:"rentang", hours:"jam", days:"hari",
     errEmpty:"CSV kosong.", errNoCols:"Tidak ada kolom parameter yang dikenali. Cek header.",
-    errRead:"Gagal membaca file.", errStarview:"Format Starview terdeteksi tapi gagal diurai.",
+    errRead:"Gagal membaca file.", errStarview:"Format Starview terdeteksi tapi gagal diurai.", errEventLog:"Ini tampak seperti log event/alarm VSD (Date/Event), bukan tren parameter numerik. Viewer hanya membuat grafik data numerik.",
     starview:"Format Starview · dikonversi otomatis", tooFew:"Data aktif (Freq>0) terlalu sedikit.",
     foot:"ESP Trend Viewer · mandiri · SCADA + Starview" }
 };
@@ -200,9 +213,13 @@ const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
 function canon(h){
   const n=norm(h.replace(/\(.*?\)/g,' '));
   if(BLOCKLIST.some(b=>n.includes(b))) return null;
-  if(ALIASES[n]) return ALIASES[n];
+  const raw=h.toLowerCase();
+  const isTemp=/temp|winding|degf|degc/.test(raw), isPress=/pressure|psi/.test(raw);
+  const PRESS={Pi:1,Pd:1,dP:1,THP:1,CHP:1}, TEMP={Ti:1,Tm:1};
+  const ok=tgt=>!( (isTemp&&PRESS[tgt]) || (isPress&&TEMP[tgt]) );   // temp≠tekanan, tekanan≠temp
+  if(ALIASES[n] && ok(ALIASES[n])) return ALIASES[n];
   let best=null,bl=0;
-  for(const k in ALIASES){ if(k.length>=4 && n.includes(k) && k.length>bl){best=ALIASES[k];bl=k.length;} }
+  for(const k in ALIASES){ if(k.length>=4 && n.includes(k) && k.length>bl && ok(ALIASES[k])){best=ALIASES[k];bl=k.length;} }
   return best;
 }
 const fmt=v=>(v!=null&&v===v)?(+v).toLocaleString(undefined,{maximumFractionDigits:2}):'—';
@@ -230,14 +247,41 @@ function parseStarview(text){
   return {data:out, fields};
 }
 
+/* ---------- flat CSV prep (skip title, detect delimiter & decimal) ---------- */
+function detectDelim(lines){
+  const cands=[',',';','\t']; let best=',', bestN=-1;
+  const sample=lines.slice(0,8);
+  cands.forEach(d=>{ const counts=sample.map(l=>l.split(d).length-1).sort((a,b)=>a-b);
+    const med=counts[Math.floor(counts.length/2)]||0; if(med>bestN){bestN=med;best=d;} });
+  return best;
+}
+function findHeaderIdx(lines,delim){
+  for(let i=0;i<Math.min(lines.length,6);i++){
+    const cells=lines[i].split(delim);
+    if(cells.some(c=>/date|time|tanggal|waktu/i.test(c))) return i;
+    if(cells.filter(c=>canon(c)).length>=2) return i;
+  }
+  return 0;
+}
+function prepFlat(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const delim=detectDelim(lines);
+  const hi=findHeaderIdx(lines,delim);
+  const body=lines.slice(hi).join('\n');
+  const r=Papa.parse(body,{header:true,delimiter:delim,skipEmptyLines:true,dynamicTyping:false});
+  return {data:r.data, fields:r.meta.fields, decimalComma:(delim!==',')};
+}
+
 /* ---------- build series from parsed rows ---------- */
-function buildSeries(rows,fields,fmtType){
+function buildSeries(rows,fields,fmtType,decimalComma){
+  const parseNum=v=>{ if(v==null) return NaN; let s=String(v).trim(); if(!s) return NaN;
+    if(decimalComma) s=s.replace(/\s/g,'').replace(',','.'); return parseFloat(s); };
   const colMap={}; let timeCol=null;
   fields.forEach(f=>{ const c=canon(f); if(c) colMap[f]=c; if(/time|date|tanggal|waktu/i.test(f)) timeCol=f; });
   const canonCols={}; Object.entries(colMap).forEach(([raw,c])=>canonCols[c]=raw);
   const series={}, times=[];
   rows.forEach(r=>{ if(timeCol){ const d=new Date(r[timeCol]); times.push(isNaN(d)?null:d); } });
-  for(const c in canonCols) series[c]=rows.map(r=>{ const v=parseFloat(r[canonCols[c]]); return isNaN(v)?NaN:v; });
+  for(const c in canonCols) series[c]=rows.map(r=>{ const v=parseNum(r[canonCols[c]]); return isNaN(v)?NaN:v; });
   if(series.Pd && series.Pi && !series.dP) series.dP=series.Pd.map((v,i)=>{ const p=series.Pi[i]; return (v===v&&p===p)?v-p:NaN; });
   if(!Object.keys(series).length) throw new Error(t('errNoCols'));
 
@@ -275,15 +319,47 @@ function buildSeries(rows,fields,fmtType){
 }
 
 /* ---------- render ---------- */
-function render(res){
-  LASTSERIES=res;
+function showResult(res){
+  FULLRES=res; LASTSERIES=res;
+  SELECTED=new Set(res.stats.map(s=>s.p));   // default: semua parameter terpilih
   document.getElementById('result').style.display='block';
   { const dz=document.getElementById('drop'); dz.classList.add('compact'); document.getElementById('t-droptitle').textContent=LANG==='id'?'Ganti CSV':'Change CSV'; document.getElementById('t-dropsub').classList.add('hidden'); }
-  const spanStr=res.meta.spanH!=null?` · ${t('range')} ${res.meta.spanH<48?res.meta.spanH.toFixed(1)+' '+t('hours'):(res.meta.spanH/24).toFixed(1)+' '+t('days')}`:'';
-  const fmtStr=res.meta.fmtType==='starview'?` · ${t('starview')}`:'';
-  document.getElementById('resultSrc').textContent=`${res.meta.points} ${t('activePoints')}${spanStr}${fmtStr}`;
-  drawChart(res.chart);
-  drawStats(res.stats);
+  refresh();
+}
+function refresh(){
+  if(!FULLRES) return;
+  const spanStr=FULLRES.meta.spanH!=null?` · ${t('range')} ${FULLRES.meta.spanH<48?FULLRES.meta.spanH.toFixed(1)+' '+t('hours'):(FULLRES.meta.spanH/24).toFixed(1)+' '+t('days')}`:'';
+  const fmtStr=FULLRES.meta.fmtType==='starview'?` · ${t('starview')}`:'';
+  document.getElementById('resultSrc').textContent=`${FULLRES.meta.points} ${t('activePoints')}${spanStr}${fmtStr}`;
+  buildPicker();
+  renderSelected();
+}
+function buildPicker(){
+  const wrap=document.getElementById('pickerWrap');
+  const all=FULLRES.stats.map(s=>s.p);
+  let html=`<div class="ph"><span class="pt">${t('pickerHead')} · ${SELECTED.size}/${all.length}</span>`+
+    `<span class="quicks"><button class="quick" data-q="all">${t('selAll')}</button><button class="quick" data-q="none">${t('selNone')}</button></span></div><div class="chips">`;
+  all.forEach(p=>{
+    const on=SELECTED.has(p), col=COLORS[p]||'#8A9BA8';
+    html+=`<span class="chip ${on?'on':'off'}" data-p="${p}"><span class="cdot" style="background:${col}"></span>${p}</span>`;
+  });
+  html+=`</div>`;
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+    const p=c.dataset.p; if(SELECTED.has(p)) SELECTED.delete(p); else SELECTED.add(p);
+    refresh();
+  }));
+  wrap.querySelectorAll('.quick').forEach(b=>b.addEventListener('click',()=>{
+    if(b.dataset.q==='all') SELECTED=new Set(all); else SELECTED=new Set();
+    refresh();
+  }));
+}
+function renderSelected(){
+  const data={};
+  for(const p in FULLRES.chart.data) if(SELECTED.has(p)) data[p]=FULLRES.chart.data[p];
+  const stats=FULLRES.stats.filter(s=>SELECTED.has(s.p));
+  drawChart({labels:FULLRES.chart.labels, data});
+  drawStats(stats);
 }
 function drawStats(stats){
   const thead=document.querySelector('#statsTable thead'), tbody=document.querySelector('#statsTable tbody');
@@ -334,7 +410,7 @@ function applyLang(){
   { const st=document.getElementById('t-statstoggle'); if(st) st.textContent=t(statsOpen?'hide':'show'); }
   set('foot','foot');
   document.querySelectorAll('#langToggle button').forEach(b=>b.classList.toggle('on',b.dataset.lang===LANG));
-  if(LASTSERIES) render(LASTSERIES);
+  if(FULLRES) refresh();
 }
 
 /* ---------- file handling ---------- */
@@ -346,13 +422,14 @@ function handleFile(f){
   reader.onerror=()=>showErr(t('errRead'));
   reader.onload=()=>{
     try{
-      const text=reader.result; let parsed, fmtType;
+      const text=reader.result; let parsed, fmtType, decimalComma=false;
+      if(/^[^\n]*\bevent\b\s*$/im.test(text.split(/\r?\n/).slice(0,4).join('\n')) && /date ?time/i.test(text.slice(0,300))) throw new Error(t('errEventLog'));
       if(isStarview(text)){ fmtType='starview'; parsed=parseStarview(text); }
-      else{ fmtType='flat'; const r=Papa.parse(text.trim(),{header:true,skipEmptyLines:true,dynamicTyping:false}); parsed={data:r.data,fields:r.meta.fields}; }
+      else{ fmtType='flat'; const p=prepFlat(text); parsed={data:p.data,fields:p.fields}; decimalComma=p.decimalComma; }
       if(!parsed.data.length) throw new Error(t('errEmpty'));
-      const res=buildSeries(parsed.data,parsed.fields,fmtType);
+      const res=buildSeries(parsed.data,parsed.fields,fmtType,decimalComma);
       if(!res.stats.length) throw new Error(t('errNoCols'));
-      render(res);
+      showResult(res);
     }catch(e){ showErr(e.message); }
   };
   reader.readAsText(f);
@@ -389,4 +466,3 @@ applyLang();
 </script>
 </body>
 </html>
-
