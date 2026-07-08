@@ -209,6 +209,8 @@ const t=k=>T[LANG][k]??k;
 
 /* ---------- helpers ---------- */
 const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const minOf=a=>{let m=Infinity;for(let i=0;i<a.length;i++) if(a[i]<m)m=a[i]; return m;};
+const maxOf=a=>{let m=-Infinity;for(let i=0;i<a.length;i++) if(a[i]>m)m=a[i]; return m;};
 const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
 function canon(h){
   const n=norm(h.replace(/\(.*?\)/g,' '));
@@ -299,7 +301,7 @@ function buildSeries(rows,fields,fmtType,decimalComma){
     const head=Math.max(1,Math.floor(v.length*0.15));
     const base=avg(v.slice(0,head)), last=avg(v.slice(-head));
     const d=Math.abs(base)<1e-6?(last-base)*100:(last-base)/Math.abs(base)*100;
-    stats.push({p:c, n:v.length, min:Math.min(...v), max:Math.max(...v), avg:avg(v), last:v[v.length-1], delta:d});
+    stats.push({p:c, n:v.length, min:minOf(v), max:maxOf(v), avg:avg(v), last:v[v.length-1], delta:d});
   }
 
   // chart data (downsample, keep raw)
@@ -379,7 +381,7 @@ function drawChart(series){
   const ctx=document.getElementById('chart'); if(chart) chart.destroy();
   const palette=Object.values(COLORS); let ci=0;
   const ds=Object.entries(series.data).map(([k,v])=>{
-    const f=v.filter(x=>x===x), mn=Math.min(...f), mx=Math.max(...f), rng=(mx-mn)||1;
+    const f=v.filter(x=>x===x), mn=minOf(f), mx=maxOf(f), rng=(mx-mn)||1;
     const color=COLORS[k]||palette[ci++%palette.length];
     return {label:k, data:v.map(x=>x===x?(x-mn)/rng*100:null), _raw:v, borderColor:color, backgroundColor:color,
       borderWidth:1.5, pointRadius:0, pointHoverRadius:3, tension:.2, spanGaps:true};
