@@ -290,10 +290,9 @@ function buildSeries(rows,fields,fmtType,decimalComma){
   if(series.Pd && series.Pi && !series.dP) series.dP=series.Pd.map((v,i)=>{ const p=series.Pi[i]; return (v===v&&p===p)?v-p:NaN; });
   if(!Object.keys(series).length) throw new Error(t('errNoCols'));
 
-  let mask=rows.map(()=>true);
-  if(series.Freq) mask=series.Freq.map(v=>v===v && v>0);
-  let idx=mask.map((m,i)=>m?i:-1).filter(i=>i>=0);
-  if(idx.length<3) idx=rows.map((_,i)=>i);   // fallback: pakai semua bila filter terlalu ketat
+  // Viewer: tampilkan SEMUA baris apa adanya (jangan sembunyikan periode ESP mati / Freq=0).
+  // Filter kondisi-jalan hanya relevan untuk app diagnosa, bukan viewer.
+  let idx=rows.map((_,i)=>i);
   const pick=a=>idx.map(i=>a[i]);
 
   // stats
