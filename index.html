@@ -283,7 +283,10 @@ function buildSeries(rows,fields,fmtType,decimalComma){
   const canonCols={}; Object.entries(colMap).forEach(([raw,c])=>canonCols[c]=raw);
   const series={}, times=[];
   rows.forEach(r=>{ if(timeCol){ const d=new Date(r[timeCol]); times.push(isNaN(d)?null:d); } });
-  for(const c in canonCols) series[c]=rows.map(r=>{ const v=parseNum(r[canonCols[c]]); return isNaN(v)?NaN:v; });
+  const TEMPP={Ti:1,Tm:1};
+  for(const c in canonCols) series[c]=rows.map(r=>{ let v=parseNum(r[canonCols[c]]); if(isNaN(v)) return NaN;
+    if(TEMPP[c] && v<=-400) return NaN;   // sentinel "no reading" (mis. -459°F absolute zero)
+    return v; });
   if(series.Pd && series.Pi && !series.dP) series.dP=series.Pd.map((v,i)=>{ const p=series.Pi[i]; return (v===v&&p===p)?v-p:NaN; });
   if(!Object.keys(series).length) throw new Error(t('errNoCols'));
 
