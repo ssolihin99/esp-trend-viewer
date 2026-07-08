@@ -280,7 +280,17 @@ function buildSeries(rows,fields,fmtType,decimalComma){
     if(decimalComma) s=s.replace(/\s/g,'').replace(',','.'); return parseFloat(s); };
   const colMap={}; let timeCol=null;
   fields.forEach(f=>{ const c=canon(f); if(c) colMap[f]=c; if(/time|date|tanggal|waktu/i.test(f)) timeCol=f; });
-  const canonCols={}; Object.entries(colMap).forEach(([raw,c])=>canonCols[c]=raw);
+  // Bila beberapa kolom memetakan ke parameter yang sama (mis. DHIntakePressure & DHIntakePressure2),
+  // pilih kolom dengan DATA NYATA terbanyak (bukan yang duluan/belakangan), agar kolom sentinel-0 tak menang.
+  const cand={}; Object.entries(colMap).forEach(([raw,c])=>{ (cand[c]=cand[c]||[]).push(raw); });
+  const dataScore=raw=>{ let s=0; for(let i=0;i<rows.length;i++){ const v=parseNum(rows[i][raw]); if(v===v && v!==0) s++; } return s; };
+  const canonCols={};
+  for(const c in cand){
+    if(cand[c].length===1){ canonCols[c]=cand[c][0]; continue; }
+    let best=cand[c][0], bs=-1;
+    cand[c].forEach(raw=>{ const s=dataScore(raw); if(s>bs){ bs=s; best=raw; } });
+    canonCols[c]=best;
+  }
   const series={}, times=[];
   rows.forEach(r=>{ if(timeCol){ const d=new Date(r[timeCol]); times.push(isNaN(d)?null:d); } });
   const TEMPP={Ti:1,Tm:1};
